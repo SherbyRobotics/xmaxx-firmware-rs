@@ -1,17 +1,16 @@
 /// A lightweight reading buffer.
 pub struct ReadBuf<const N: usize> {
     idx: usize,
-    buffer: [u8; N]
+    buffer: [u8; N],
 }
 
-impl<const N: usize> ReadBuf<{N}> {
-
+impl<const N: usize> ReadBuf<{ N }> {
     /// Returns a new buffer.
     pub fn new() -> Self {
         let idx = 0;
         let buffer = [0u8; N];
 
-        Self {idx, buffer}
+        Self { idx, buffer }
     }
 
     /// Push the given byte to the buffer.
