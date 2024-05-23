@@ -11,12 +11,11 @@ use embedded_hal::serial::{Read, Write};
 use postcard::{from_bytes_cobs, to_slice_cobs};
 
 mod utils;
-use utils::panic::panic;
+//use utils::panic::panic;
 use utils::readbuf::ReadBuf;
 use utils::time::{millis, millis_init};
 
-mod messages;
-use messages::{Command, Info, XmaxxError};
+use xmaxx_messages::{Command, Info, XmaxxError};
 
 fn read_command<const N: usize>(read_buf: &mut ReadBuf<N>, serial: impl Read<u8>) -> Command {
     todo!()

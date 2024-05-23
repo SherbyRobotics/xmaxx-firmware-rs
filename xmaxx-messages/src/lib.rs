@@ -1,5 +1,8 @@
+#![no_std]
+
 use serde::{Deserialize, Serialize};
 
+/// Information sent by the firmware.
 #[derive(Serialize, Deserialize)]
 pub enum Info {
     Sensors {
@@ -11,6 +14,7 @@ pub enum Info {
     Error(XmaxxError),
 }
 
+/// Possible errors in the firmware.
 #[derive(Serialize, Deserialize)]
 pub enum XmaxxError {
     SerializationError,
@@ -21,6 +25,7 @@ pub enum XmaxxError {
     WriteError,
 }
 
+/// Command sent to the firmware.
 #[derive(Serialize, Deserialize, Default)]
 pub struct Command {
     steering: i8,
