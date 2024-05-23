@@ -2,7 +2,7 @@
 #![no_main]
 #![feature(abi_avr_interrupt)]
 
-// use core::ops::RangeInclusive;
+use core::ops::RangeInclusive;
 
 use arduino_hal::prelude::*;
 use arduino_hal::simple_pwm::*;
@@ -15,20 +15,62 @@ mod utils;
 use utils::readbuf::ReadBuf;
 use utils::time::{millis, millis_init};
 
-use xmaxx_messages::{Command, Info, XmaxxError};
+use xmaxx_messages::{deserialize, serialize, Command, Info, XmaxxError};
 
-fn read_command<const N: usize>(read_buf: &mut ReadBuf<N>, serial: impl Read<u8>) -> Command {
-    todo!()
+/// Read a command from serial.
+///
+/// **Note:** for this function to work, the sending end must send each byte individually.
+fn read_command<const N: usize>(
+    read_buf: &mut ReadBuf<{N}>,
+    serial: &mut impl Read<u8>,
+) -> Result<Option<Command>, XmaxxError> {
+    while let Ok(byte) = serial.read() {
+        read_buf
+            .push(byte)
+            .or_else(|_| Err(XmaxxError::ReadBufferOverflow))?;
+
+        if byte == 0 {
+            let command: Command = deserialize(read_buf.as_mut_slice())?;
+            read_buf.reset();
+            return Ok(Some(command));
+        }
+    }
+
+    Ok(None)
 }
+
+fn write_info(
+    info: &Info,
+    write_buf: &mut [u8],
+    serial: &mut impl Write<u8>,
+) -> Result<(), XmaxxError> {
+    let msg = serialize(info, write_buf)?;
+    for b in msg {
+        let _ = nb::block!(serial.write(*b)); // should be infallible
+    }
+    Ok(())
+}
+
+const STEERING_DUTY_RANGE: RangeInclusive<u16> = 130..=250;
+const STEERING_DUTY_ZERO: u16 = 190;
+const STEERING_RANGE: RangeInclusive<u8> = 35..=135; // deg
+
+const MOTOR_DUTY_RANGE: RangeInclusive<f32> = 0.1..=0.9;
+const RPM_RANGE: RangeInclusive<f32> = -4500.0..=4500.0; // RPM
+const CURRENT_RANGE: RangeInclusive<f32> = -8.0..=8.0; // A
+
+const ZERO_RPM: f32 = 412.; // analog_unit
+const RPM_PER_ANALOG: f32 = 4500. / 410.; // RPM / analog_unit
+const GEARING: f32 = 10.6; // 10.6 (motor) : 1 (wheel)
+const WHEEL_RADIUS: f32 = 0.1; // m
 
 #[arduino_hal::entry]
 fn main() -> ! {
     let dp = arduino_hal::Peripherals::take().unwrap();
     let pins = arduino_hal::pins!(dp);
 
-    // necessary to make millis() work
-    //     millis_init(dp.TC0);
-    //     unsafe { avr_device::interrupt::enable() };  // enable interrupts globally
+    millis_init(dp.TC0);
+    unsafe { avr_device::interrupt::enable() };
 
     // communication setup
     let mut serial = arduino_hal::default_serial!(dp, pins, 57600);
@@ -74,25 +116,11 @@ fn main() -> ! {
     let speed_rl = pins.a7.into_analog_input(&mut adc); // a4?
     let speed_rr = pins.a6.into_analog_input(&mut adc); // a5?
 
-    const ZERO_RPM_mV: u16 = 412; // mV
-    const RPM_PER_mV: u16 = 0x70D0; // RPM / mV
-
     let mut led = pins.d13.into_output();
-    led.set_low();
-    //     led.enable();
 
     loop {
         // read from serial
-        // NOTE for this to work, the sending end must send each byte individually.
-        // TODO uncomment
-        while let Ok(byte) = serial.read() {
-            read_buf.push(byte).unwrap();
-
-            if byte == 0 {
-                command = from_bytes_cobs(read_buf.as_mut_slice()).unwrap();
-                read_buf.reset();
-            }
-        }
+        if let Some(command) = read_command(&mut read_buf, &mut serial).unwrap() {}
 
         steering.set_duty(190); // 130..250  mid 190
         led.toggle();
@@ -103,11 +131,12 @@ fn main() -> ! {
         motor_rr.set_duty(127);
 
         // write Sensor to serial TODO uncomment
-        if let Ok(msg) = to_slice_cobs(&dummy_sensors, &mut write_buf) {
-            for b in msg {
-                nb::block!(serial.write(*b));
-            }
-        }
+//         if let Ok(msg) = to_slice_cobs(&dummy_sensors, &mut write_buf) {
+//             for b in msg {
+//                 let _ = nb::block!(serial.write(*b));
+//             }
+//         }
+        write_info(&dummy_sensors, &mut write_buf, &mut serial);
 
         //         ufmt::uwriteln!(&mut serial, "{}", speed_fr.analog_read(&mut adc));
         arduino_hal::delay_ms(1000);
