@@ -133,20 +133,10 @@ class JSTest(object):
 def main():
     """Process all events forever."""
     jstest = JSTest()
-    
-    A = 0
-    UD = 0
-    LR = 0
-    
     while True:
         event_dict = jstest.process_events()
         if event_dict:
-            A = event_dict['A']
-            UD = event_dict['R-UD']
-            LR = event_dict['L-LR']
-            print(A)
-            print(UD)
-            print(LR)
+            print(event_dict)
 
 if __name__ == "__main__":
     main()
