@@ -8,10 +8,7 @@ use arduino_hal::prelude::*;
 use arduino_hal::simple_pwm::*;
 use embedded_hal::serial::{Read, Write};
 
-use postcard::{from_bytes_cobs, to_slice_cobs};
-
 mod utils;
-//use utils::panic::panic;
 use utils::readbuf::ReadBuf;
 use utils::time::{millis, millis_init};
 
@@ -21,15 +18,17 @@ use xmaxx_messages::{deserialize, serialize, Command, Info, XmaxxError};
 ///
 /// **Note:** for this function to work, the sending end must send each byte individually.
 fn read_command<const N: usize>(
-    read_buf: &mut ReadBuf<{N}>,
+    read_buf: &mut ReadBuf<{ N }>,
     serial: &mut impl Read<u8>,
 ) -> Result<Option<Command>, XmaxxError> {
     while let Ok(byte) = serial.read() {
         read_buf
             .push(byte)
+            // TODO reset buffer on overflow or else the buffer is never reseted after
             .or_else(|_| Err(XmaxxError::ReadBufferOverflow))?;
 
         if byte == 0 {
+            // TODO reset buffer on deserialization error or will fail forever after
             let command: Command = deserialize(read_buf.as_mut_slice())?;
             read_buf.reset();
             return Ok(Some(command));
@@ -64,6 +63,16 @@ const RPM_PER_ANALOG: f32 = 4500. / 410.; // RPM / analog_unit
 const GEARING: f32 = 10.6; // 10.6 (motor) : 1 (wheel)
 const WHEEL_RADIUS: f32 = 0.1; // m
 
+/// Computes the wheel RPM from the analog reading.
+fn analog_to_rpm(analog: f32) -> f32 {
+    RPM_PER_ANALOG * (analog - ZERO_RPM) / GEARING
+}
+
+/// Computes the duty cycle to achieve the wheel RPM.
+fn rpm_to_duty(rpm: f32) -> u8 {
+    todo!()
+}
+
 #[arduino_hal::entry]
 fn main() -> ! {
     let dp = arduino_hal::Peripherals::take().unwrap();
@@ -79,15 +88,13 @@ fn main() -> ! {
 
     let mut command = Command::default();
     let dummy_sensors = Info::Sensors {
-        fl_whl_spd: 0.0,
-        fr_whl_spd: 1.0,
-        rl_whl_spd: 2.0,
-        rr_whl_spd: 3.0,
+        fl_whl_rpm: 0.0,
+        fr_whl_rpm: 1.0,
+        rl_whl_rpm: 2.0,
+        rr_whl_rpm: 3.0,
     };
 
     // steering setup
-    //     const STEERING_RANGE_DEG: RangeInclusive<u16> = 35..=135;
-    //     const STEERING_RANGE_DUTY: RangeInclusive<u16> = 130..=250;
     let mut timer1 = Timer1Pwm::new(dp.TC1, Prescaler::Prescale64);
     let mut steering = pins.d12.into_output().into_pwm(&mut timer1);
     steering.enable(); // really important
@@ -120,7 +127,8 @@ fn main() -> ! {
 
     loop {
         // read from serial
-        if let Some(command) = read_command(&mut read_buf, &mut serial).unwrap() {}
+        // TODO change this
+        if let Some(Some(command)) = read_command(&mut read_buf, &mut serial).ok() {}
 
         steering.set_duty(190); // 130..250  mid 190
         led.toggle();
@@ -131,14 +139,14 @@ fn main() -> ! {
         motor_rr.set_duty(127);
 
         // write Sensor to serial TODO uncomment
-//         if let Ok(msg) = to_slice_cobs(&dummy_sensors, &mut write_buf) {
-//             for b in msg {
-//                 let _ = nb::block!(serial.write(*b));
-//             }
-//         }
         write_info(&dummy_sensors, &mut write_buf, &mut serial);
 
-        //         ufmt::uwriteln!(&mut serial, "{}", speed_fr.analog_read(&mut adc));
+        let fl_rpm = analog_to_rpm(speed_fl.analog_read(&mut adc).into());
+        let fr_rpm = analog_to_rpm(speed_fr.analog_read(&mut adc).into());
+        let rl_rpm = analog_to_rpm(speed_rl.analog_read(&mut adc).into());
+        let rr_rpm = analog_to_rpm(speed_rr.analog_read(&mut adc).into());
+
+        //         ufmt::uwriteln!(&mut serial, "{}", fr_rpm);
         arduino_hal::delay_ms(1000);
     }
 }

@@ -1,16 +1,16 @@
 #![no_std]
 
+use postcard::{from_bytes_cobs, to_slice_cobs};
 use serde::{Deserialize, Serialize};
-use postcard::{from_bytes_cobs, to_slice_cobs, Error};
 
 /// Information sent by the firmware.
 #[derive(Serialize, Deserialize)]
 pub enum Info {
     Sensors {
-        fl_whl_spd: f32,
-        fr_whl_spd: f32,
-        rl_whl_spd: f32,
-        rr_whl_spd: f32,
+        fl_whl_rpm: f32,
+        fr_whl_rpm: f32,
+        rl_whl_rpm: f32,
+        rr_whl_rpm: f32,
     },
     Error(XmaxxError),
 }
@@ -27,18 +27,34 @@ pub enum XmaxxError {
 /// Command sent to the firmware.
 #[derive(Serialize, Deserialize, Default)]
 pub struct Command {
-    steering: i8,
-    fl_whl_spd: i16,
-    fr_whl_spd: i16,
-    rl_whl_spd: i16,
-    rr_whl_spd: i16,
+    steering: f32,
+    fl_whl_rpm: f32,
+    fr_whl_rpm: f32,
+    rl_whl_rpm: f32,
+    rr_whl_rpm: f32,
 }
 
-
-pub fn serialize<'a, 'b, M>(message: &'b M, buffer: &'a mut [u8]) -> Result<&'a mut [u8], XmaxxError> {
-    todo!()
+/// Serializes the message.
+///
+/// This function allows to alter the serial format without having to rewrite
+/// the caller site.
+pub fn serialize<'a, 'b, M>(
+    message: &'b M,
+    buffer: &'a mut [u8],
+) -> Result<&'a mut [u8], XmaxxError>
+where
+    M: Serialize,
+{
+    to_slice_cobs(message, buffer).or_else(|_| Err(XmaxxError::SerializationError))
 }
 
-pub fn deserialize<M>(buffer: &mut [u8]) -> Result<M, XmaxxError> {
-    todo!()
+/// Deserializes the message.
+///
+/// This function allows to alter the serial format without having to rewrite
+/// the caller site.
+pub fn deserialize<'a, M>(buffer: &'a mut [u8]) -> Result<M, XmaxxError>
+where
+    M: Deserialize<'a>,
+{
+    from_bytes_cobs(buffer).or_else(|_| Err(XmaxxError::DeserializationError))
 }
