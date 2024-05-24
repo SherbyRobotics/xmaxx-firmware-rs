@@ -10,4 +10,5 @@ crate-type = ["cdylib"]
 
 [dependencies]
 pyo3 = "0.20.0"
+serialport = "4.3.0"
 xmaxx-messages = { path = "../xmaxx-messages" }
