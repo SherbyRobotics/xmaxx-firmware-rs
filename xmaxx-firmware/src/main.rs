@@ -12,7 +12,7 @@ mod utils;
 use utils::readbuf::ReadBuf;
 use utils::time::{millis, millis_init};
 
-use xmaxx_messages::{deserialize, serialize, Command, Info, XmaxxError};
+use xmaxx_messages::*;
 
 /// Read a command from serial.
 ///
@@ -20,16 +20,17 @@ use xmaxx_messages::{deserialize, serialize, Command, Info, XmaxxError};
 fn read_command<const N: usize>(
     read_buf: &mut ReadBuf<{ N }>,
     serial: &mut impl Read<u8>,
-) -> Result<Option<Command>, XmaxxError> {
+) -> Result<Option<Command>, XmaxxInfo> {
     while let Ok(byte) = serial.read() {
         read_buf
             .push(byte)
             // TODO reset buffer on overflow or else the buffer is never reseted after
-            .or_else(|_| Err(XmaxxError::ReadBufferOverflow))?;
+            .or_else(|_| Err(XmaxxInfo::ReadBufferOverflow))?;
 
         if byte == 0 {
             // TODO reset buffer on deserialization error or will fail forever after
-            let command: Command = deserialize(read_buf.as_mut_slice())?;
+            let command: Command = deserialize(read_buf.as_mut_slice())
+                .or_else(|_| Err(XmaxxInfo::DeserializationError))?;
             read_buf.reset();
             return Ok(Some(command));
         }
@@ -38,12 +39,12 @@ fn read_command<const N: usize>(
     Ok(None)
 }
 
-fn write_info(
-    info: &Info,
+fn write_event(
+    event: &XmaxxEvent,
     write_buf: &mut [u8],
     serial: &mut impl Write<u8>,
-) -> Result<(), XmaxxError> {
-    let msg = serialize(info, write_buf)?;
+) -> Result<(), XmaxxInfo> {
+    let msg = serialize(event, write_buf).or_else(|_| Err(XmaxxInfo::SerializationError))?;
     for b in msg {
         let _ = nb::block!(serial.write(*b)); // should be infallible
     }
@@ -87,12 +88,12 @@ fn main() -> ! {
     let mut write_buf = [0u8; 192];
 
     let mut command = Command::default();
-    let dummy_sensors = Info::Sensors {
+    let dummy_sensors = XmaxxEvent::Sensors(Sensors {
         fl_whl_rpm: 0.0,
         fr_whl_rpm: 1.0,
         rl_whl_rpm: 2.0,
         rr_whl_rpm: 3.0,
-    };
+    });
 
     // steering setup
     let mut timer1 = Timer1Pwm::new(dp.TC1, Prescaler::Prescale64);
@@ -139,7 +140,7 @@ fn main() -> ! {
         motor_rr.set_duty(127);
 
         // write Sensor to serial TODO uncomment
-        write_info(&dummy_sensors, &mut write_buf, &mut serial);
+        write_event(&dummy_sensors, &mut write_buf, &mut serial);
 
         let fl_rpm = analog_to_rpm(speed_fl.analog_read(&mut adc).into());
         let fr_rpm = analog_to_rpm(speed_fr.analog_read(&mut adc).into());
