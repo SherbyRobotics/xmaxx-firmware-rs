@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 use std::time::Duration;
 
 use pyo3::exceptions::PyException;
@@ -21,7 +23,6 @@ struct PyCommand {
 #[pymethods]
 impl PyCommand {
     #[new]
-    #[pyo3(text_signature = "(steering, fl_whl_rpm, fr_whl_rpm, rl_whl_rpm, rr_whl_rpm)")]
     fn new(
         steering: f32,
         fl_whl_rpm: f32,
@@ -119,6 +120,8 @@ enum PyXmaxxInfo {
     ReadBufferOverflow,
     /// It was too long since the last message received.
     ReadTimeout,
+    /// The firmware panicked and must must reseted.
+    FirmwarePanic,
 }
 
 impl From<XmaxxInfo> for PyXmaxxInfo {
@@ -128,18 +131,28 @@ impl From<XmaxxInfo> for PyXmaxxInfo {
             XmaxxInfo::DeserializationError => Self::DeserializationError,
             XmaxxInfo::ReadBufferOverflow => Self::ReadBufferOverflow,
             XmaxxInfo::ReadTimeout => Self::ReadTimeout,
+            XmaxxInfo::FirmwarePanic => Self::FirmwarePanic,
         }
     }
 }
 
 /// A socket to communicate with the Xmaxx firmware.
-#[pyclass]
-struct XmaxxFirmware {
+#[pyclass(name = "XmaxxFirmware")]
+struct PyXmaxxFirmware {
     port: Option<Box<dyn SerialPort>>,
 }
 
 #[pymethods]
-impl XmaxxFirmware {
+impl PyXmaxxFirmware {
+
+    /// Instantiates a connection to the firmware.
+    ///
+    /// port: str
+    ///     the path to the serial port
+    /// baudrate: int = 57600
+    ///     the baudrate of the communication
+    /// timeout: int = 500
+    ///     the timeout on io operations (ms)
     #[new]
     #[pyo3(signature = (port, baudrate=57600, timeout=500))]
     fn new(port: &str, baudrate: u32, timeout: u64) -> PyResult<Self> {
@@ -174,7 +187,7 @@ impl XmaxxFirmware {
         }
     }
 
-    /// Reads information from the firmware.
+    /// Receives information from the firmware.
     ///
     /// Raises errors on failed io operations and if it fails to deserialize
     /// a message.
@@ -182,17 +195,13 @@ impl XmaxxFirmware {
     /// This method returns either a `Sensors` or a `XmaxxInfo`. Therefore,
     /// it is recommended to match its output a little like this:
     /// ```python
-    /// from xmaxx_python import XmaxxFirmware, Sensors, XmaxxInfo
-    ///
-    /// firmware = XmaxxFirmware("/path/to/port")
-    ///
-    /// match firmware.read():
-    ///     case Sensors() as sensors:
-    ///         ...
-    ///     case XmaxxInfo() as info:
-    ///         ...
+    /// >>> match firmware.recv():
+    /// ...    case Sensors() as sensors:
+    /// ...        ...
+    /// ...    case XmaxxInfo() as info:
+    /// ...        ...
     /// ```
-    fn read(&mut self) -> PyResult<PyXmaxxEvent> {
+    fn recv(&mut self) -> PyResult<PyXmaxxEvent> {
         if let Some(port) = &mut self.port {
             let mut b = [0u8; 1];
             let mut buf = Vec::<u8>::new();
@@ -218,7 +227,7 @@ impl XmaxxFirmware {
         }
     }
 
-    /// Close the connection to the firmware.
+    /// Closes the connection to the firmware.
     ///
     /// The calling instance can no longer be used after. To reopen the
     /// communication, instantiate a new object.
@@ -230,9 +239,28 @@ impl XmaxxFirmware {
 }
 
 /// A Python module to interface with the Xmaxx firmware - in Rust.
+///
+/// It provides the means to send commands to and receive information from the
+/// Xmaxx.
+///
+/// ## Usage
+/// ```python
+/// >>> from xmaxx_python import *
+/// >>>
+/// >>> firmware = XmaxxFirmware("/path/to/port")
+/// >>>
+/// >>> command = Command(42, 37, 37, 37, 37)
+/// >>> firmware.send(command)
+/// >>>
+/// >>> match firmware.recv():
+/// ...    case Sensors() as sensors:
+/// ...        ...
+/// ...    case XmaxxInfo() as info:
+/// ...        ...
+/// ```
 #[pymodule]
 fn xmaxx_python(_py: Python, m: &PyModule) -> PyResult<()> {
-    m.add_class::<XmaxxFirmware>()?;
+    m.add_class::<PyXmaxxFirmware>()?;
     m.add_class::<PyCommand>()?;
     m.add_class::<PySensors>()?;
     m.add_class::<PyXmaxxInfo>()?;
