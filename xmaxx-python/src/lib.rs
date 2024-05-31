@@ -38,17 +38,24 @@ impl PyCommand {
             rr_whl_rpm,
         }
     }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "Command(steering={}, fl_whl_rpm={}, fr_whl_rpm={}, rl_whl_rpm={}, rr_whl_rpm={})",
+            self.steering, self.fl_whl_rpm, self.fr_whl_rpm, self.rl_whl_rpm, self.rr_whl_rpm
+        )
+    }
 }
 
 impl Into<Command> for &PyCommand {
     fn into(self) -> Command {
-        Command::new(
-            self.steering,
-            self.fl_whl_rpm,
-            self.fr_whl_rpm,
-            self.rl_whl_rpm,
-            self.rr_whl_rpm,
-        )
+        Command {
+            steering: self.steering,
+            fl_whl_rpm: self.fl_whl_rpm,
+            fr_whl_rpm: self.fr_whl_rpm,
+            rl_whl_rpm: self.rl_whl_rpm,
+            rr_whl_rpm: self.rr_whl_rpm,
+        }
     }
 }
 

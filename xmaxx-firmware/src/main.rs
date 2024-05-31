@@ -6,7 +6,8 @@ use core::ops::RangeInclusive;
 
 use arduino_hal::prelude::*;
 use arduino_hal::simple_pwm::*;
-use embedded_hal::serial::{Read, Write};
+use embedded_hal::pwm::SetDutyCycle;
+use embedded_hal_v0::serial::{Read, Write};
 
 mod utils;
 use utils::readbuf::ReadBuf;
@@ -22,10 +23,10 @@ fn read_command<const N: usize>(
     serial: &mut impl Read<u8>,
 ) -> Result<Option<Command>, XmaxxInfo> {
     while let Ok(byte) = serial.read() {
-        read_buf
-            .push(byte)
-            // TODO reset buffer on overflow or else the buffer is never reseted after
-            .or_else(|_| Err(XmaxxInfo::ReadBufferOverflow))?;
+        read_buf.push(byte).or_else(|_| {
+            read_buf.reset();
+            Err(XmaxxInfo::ReadBufferOverflow)
+        })?;
 
         if byte == 0 {
             // TODO reset buffer on deserialization error or will fail forever after
@@ -46,7 +47,7 @@ fn write_event(
 ) -> Result<(), XmaxxInfo> {
     let msg = serialize(event, write_buf).or_else(|_| Err(XmaxxInfo::SerializationError))?;
     for b in msg {
-        let _ = nb::block!(serial.write(*b)); // should be infallible
+        let _ = nb::block!(serial.write(*b)); // should be infallible, cannot .expect() because some trait is not implemented
     }
     Ok(())
 }
@@ -54,6 +55,11 @@ fn write_event(
 const STEERING_DUTY_RANGE: RangeInclusive<u16> = 130..=250;
 const STEERING_DUTY_ZERO: u16 = 190;
 const STEERING_RANGE: RangeInclusive<u8> = 35..=135; // deg
+
+/// Compute the duty cycle to achieve the desired angle.
+fn angle_to_duty(angle: f32) -> u8 {
+    todo!()
+}
 
 const MOTOR_DUTY_RANGE: RangeInclusive<f32> = 0.1..=0.9;
 const RPM_RANGE: RangeInclusive<f32> = -4500.0..=4500.0; // RPM
@@ -72,6 +78,21 @@ fn analog_to_rpm(analog: f32) -> f32 {
 /// Computes the duty cycle to achieve the wheel RPM.
 fn rpm_to_duty(rpm: f32) -> u8 {
     todo!()
+}
+
+fn execute<Pwm: SetDutyCycle>(
+    command: Command,
+    steering: &mut Pwm,
+    motor_fl: &mut Pwm,
+    motor_fr: &mut Pwm,
+    motor_rl: &mut Pwm,
+    motor_rr: &mut Pwm,
+) {
+    steering.set_duty_cycle_percent(angle_to_duty(command.steering));
+    motor_fl.set_duty_cycle_percent(rpm_to_duty(command.fl_whl_rpm));
+    motor_fr.set_duty_cycle_percent(rpm_to_duty(command.fr_whl_rpm));
+    motor_rl.set_duty_cycle_percent(rpm_to_duty(command.rl_whl_rpm));
+    motor_rr.set_duty_cycle_percent(rpm_to_duty(command.rr_whl_rpm));
 }
 
 #[arduino_hal::entry]
@@ -128,19 +149,30 @@ fn main() -> ! {
 
     loop {
         // read from serial
-        // TODO change this
-        if let Some(Some(command)) = read_command(&mut read_buf, &mut serial).ok() {}
+        match read_command(&mut read_buf, &mut serial) {
+            Ok(Some(command)) => {
+                //                 if is_valid(&command) {
+                //                     execute(command, &mut motor_fl, &mut motor_fr, &mut motor_rl, &mut motor_rr);
+                //                 } else {
+                //                     write_event(&XmaxxEvent::Info(XmaxxInfo::InvalidCommand), &mut write_buf, &mut serial).expect("should work because valid message and big enough buffer");
+                //                 }
+            }
+            Ok(None) => (),
+            Err(info) => write_event(&XmaxxEvent::Info(info), &mut write_buf, &mut serial)
+                .expect("should work because valid message and big enough buffer"),
+        };
 
         steering.set_duty(190); // 130..250  mid 190
-        led.toggle();
-        // TODO uncomment
+                                //led.toggle();
+                                // TODO uncomment
         motor_fl.set_duty(127);
         motor_fr.set_duty(127);
         motor_rl.set_duty(127);
         motor_rr.set_duty(127);
 
-        // write Sensor to serial TODO uncomment
+        // write Sensor to serial
         write_event(&dummy_sensors, &mut write_buf, &mut serial);
+        //         write_event(&XmaxxEvent::Info(XmaxxInfo::ReadTimeout), &mut write_buf, &mut serial);
 
         let fl_rpm = analog_to_rpm(speed_fl.analog_read(&mut adc).into());
         let fr_rpm = analog_to_rpm(speed_fr.analog_read(&mut adc).into());
@@ -148,6 +180,6 @@ fn main() -> ! {
         let rr_rpm = analog_to_rpm(speed_rr.analog_read(&mut adc).into());
 
         //         ufmt::uwriteln!(&mut serial, "{}", fr_rpm);
-        arduino_hal::delay_ms(1000);
+        //         arduino_hal::delay_ms(1000);
     }
 }

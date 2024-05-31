@@ -1,5 +1,5 @@
 use arduino_hal::prelude::*;
-use avr_device;
+use xmaxx_messages::*;
 
 #[panic_handler]
 pub fn panic(info: &core::panic::PanicInfo) -> ! {
@@ -15,7 +15,13 @@ pub fn panic(info: &core::panic::PanicInfo) -> ! {
     let pins = arduino_hal::pins!(dp);
     let mut serial = arduino_hal::default_serial!(dp, pins, 57600);
 
-    // Print out panic location
+    // disable the motors
+    let mut enable_front = pins.d8.into_output();
+    let mut enable_rear = pins.d11.into_output();
+    enable_front.set_low();
+    enable_rear.set_low();
+
+    // print out panic location
     ufmt::uwriteln!(&mut serial, "Firmware panic!\r").unwrap_infallible();
     if let Some(loc) = info.location() {
         ufmt::uwriteln!(
@@ -28,10 +34,20 @@ pub fn panic(info: &core::panic::PanicInfo) -> ! {
         .unwrap_infallible();
     }
 
-    // Blink LED rapidly
     let mut led = pins.d13.into_output();
+
+    let mut write_buf = [0u8; 128];
+    let msg = serialize(&XmaxxEvent::Info(XmaxxInfo::FirmwarePanic), &mut write_buf)
+        .expect("the message should serialize");
+
     loop {
+        // blink LED rapidly
         led.toggle();
         arduino_hal::delay_ms(100);
+
+        // spam that the firmware panicked
+        for b in &(*msg) {
+            let _ = nb::block!(serial.write(*b)); // should be infallible, cannot .expect() because some trait is not implemented
+        }
     }
 }

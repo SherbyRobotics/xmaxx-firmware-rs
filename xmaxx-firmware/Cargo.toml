@@ -11,13 +11,18 @@ test = false
 bench = false
 
 [dependencies]
-panic-halt = "0.2.0"
 ufmt = "0.2.0"
 nb = "0.1.2"
-embedded-hal = "0.2.3"
+embedded-hal = "1.0"
 avr-device = "0.5.4"
 
 xmaxx-messages = { path = "../xmaxx-messages" }
+
+# This trick allows to use both versions of embedded-hal simultaniously.
+# It is required to import `embedded_hal_v0::serial` and `embedded_hal::pwm`.
+[dependencies.embedded-hal-v0]
+version = "0.2.3"
+package = "embedded-hal"
 
 [dependencies.arduino-hal]
 git = "https://github.com/rahix/avr-hal"
