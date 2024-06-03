@@ -129,6 +129,8 @@ enum PyXmaxxInfo {
     ReadTimeout,
     /// The firmware panicked and must must reseted.
     FirmwarePanic,
+    /// The command sent was invalid.
+    InvalidCommand
 }
 
 impl From<XmaxxInfo> for PyXmaxxInfo {
@@ -139,6 +141,7 @@ impl From<XmaxxInfo> for PyXmaxxInfo {
             XmaxxInfo::ReadBufferOverflow => Self::ReadBufferOverflow,
             XmaxxInfo::ReadTimeout => Self::ReadTimeout,
             XmaxxInfo::FirmwarePanic => Self::FirmwarePanic,
+            XmaxxInfo::InvalidCommand => Self::InvalidCommand,
         }
     }
 }
@@ -250,7 +253,7 @@ impl PyXmaxxFirmware {
 /// It provides the means to send commands to and receive information from the
 /// Xmaxx.
 ///
-/// ## Usage
+/// Usage:
 /// ```python
 /// >>> from xmaxx_python import *
 /// >>>

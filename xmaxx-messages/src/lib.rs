@@ -31,21 +31,22 @@ pub enum XmaxxInfo {
     ReadBufferOverflow,
     ReadTimeout,
     FirmwarePanic,
+    InvalidCommand,
 }
 
 /// Command sent to the firmware.
 #[derive(Serialize, Deserialize, Default, Debug)]
 pub struct Command {
     /// Angle of the steering (90 deg -> straight).
-    pub steering: f32,
+    pub steering: i16,
     /// Front left wheel RPM.
-    pub fl_whl_rpm: f32,
+    pub fl_whl_rpm: i16,
     /// Front right wheel RPM.
-    pub fr_whl_rpm: f32,
+    pub fr_whl_rpm: i16,
     /// Rear left wheel RPM.
-    pub rl_whl_rpm: f32,
+    pub rl_whl_rpm: i16,
     /// Rear right wheel RPM.
-    pub rr_whl_rpm: f32,
+    pub rr_whl_rpm: i16,
 }
 
 /// Serializes the message.
