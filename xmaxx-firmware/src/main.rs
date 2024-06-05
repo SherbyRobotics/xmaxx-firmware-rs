@@ -4,16 +4,18 @@
 
 use core::ops::RangeInclusive;
 
-use arduino_hal::prelude::*;
 use arduino_hal::simple_pwm::*;
 use embedded_hal::pwm::SetDutyCycle;
 use embedded_hal_v0::serial::{Read, Write};
+
+use xmaxx_messages::*;
 
 mod utils;
 use utils::readbuf::ReadBuf;
 use utils::time::{millis, millis_init};
 
-use xmaxx_messages::*;
+const READ_BUF_SIZE: usize =
+    core::mem::size_of::<Command>() + core::mem::size_of::<Command>() / 8 + 1;
 
 /// Read a command from serial.
 ///
@@ -40,6 +42,9 @@ fn read_command<const N: usize>(
     Ok(None)
 }
 
+const WRITE_BUF_SIZE: usize =
+    core::mem::size_of::<XmaxxEvent>() + core::mem::size_of::<XmaxxEvent>() + 1;
+
 /// Write an event to serial.
 fn write_event(
     event: &XmaxxEvent,
@@ -53,47 +58,60 @@ fn write_event(
     Ok(())
 }
 
-const DUTY_CYCLE_DENOM: u16 = 10_000;
+const SCALE: i32 = 100;
+const DUTY_CYCLE_DENOM: u16 = 1000;
 
-const STEERING_DUTY_NUM_RANGE: RangeInclusive<i16> = 5098..=9803; // 130..=250 / 255 * 10000
-const STEERING_DUTY_NUM_ZERO: i16 = 7451; // 190 / 255 * 10000
-const STEERING_RANGE: RangeInclusive<i16> = 35..=135; // deg
+const STEERING_DUTY_MIN: i32 = 510; // 130 / 255 * 1000
+const STEERING_DUTY_ZERO: i32 = 745; // 190 / 255 * 1000
+const STEERING_DUTY_MAX: i32 = 980; // 250 / 255 * 1000
+                                    //const STEERING_DUTY_RANGE: RangeInclusive<i32> = STEERING_DUTY_MIN..=STEERING_DUTY_MAX;
+const STEERING_ANGLE_MIN: i32 = 35 * SCALE; // SCALE-deg
+const STEERING_ANGLE_MAX: i32 = 135 * SCALE; // SCALE-deg
+const STEERING_ANGLE_RANGE: RangeInclusive<i32> = STEERING_ANGLE_MIN..=STEERING_ANGLE_MAX; // SCALE-deg
 
-/// Compute the duty cycle to achieve the desired angle.
+/// Compute the duty cycle to achieve the desired angle (SCALE-degrees).
 ///
 /// It assumes that `angle` is in the steering range of motion.
-fn angle_to_duty(angle: i16) -> u16 {
-    let delta_duty = STEERING_DUTY_NUM_RANGE.end() - STEERING_DUTY_NUM_RANGE.start();
-    let delta_angle = STEERING_RANGE.end() - STEERING_RANGE.start();
+fn angle_to_duty(angle: i32) -> u16 {
+    let delta_duty = STEERING_DUTY_MAX - STEERING_DUTY_MIN;
+    let delta_angle = STEERING_ANGLE_MAX - STEERING_ANGLE_MIN;
 
-    // (9803-5098) * 35 / (135-35) + 7451 > 0
-    (delta_duty * angle / delta_angle + STEERING_DUTY_NUM_ZERO) as u16
+    // safe to cast: all positive and in range of u16
+    (delta_duty * angle / delta_angle + STEERING_DUTY_ZERO) as u16
 }
 
-const MOTOR_DUTY_NUM_RANGE: RangeInclusive<i16> = 1000..=9000; // 0.1..=0.9
-const MOTOR_DUTY_NUM_ZERO: i16 = 5000;
-const RPM_RANGE: RangeInclusive<i16> = -4500..=4500; // RPM
+const MOTOR_DUTY_NUM_MIN: i32 = 100;
+const MOTOR_DUTY_NUM_ZERO: i32 = 500;
+const MOTOR_DUTY_NUM_MAX: i32 = 900;
+//const MOTOR_DUTY_NUM_RANGE: RangeInclusive<i32> = MOTOR_DUTY_NUM_MIN..=MOTOR_DUTY_NUM_MAX; // 0.1..=0.9
+const RPM_MIN: i32 = -4500 * SCALE; // SCALE-RPM
+const RPM_MAX: i32 = 4500 * SCALE; // SCALE-RPM
+const RPM_RANGE: RangeInclusive<i32> = RPM_MIN..=RPM_MAX; // SCALE-RPM
 
-/// Computes the duty cycle to achieve the wheel RPM.
+/// Computes the duty cycle to achieve the wheel RPM (SCALE-RPM).
 ///
 /// It assumes that `rpm` is in the range.
-fn rpm_to_duty(rpm: i16) -> u16 {
-    let delta_duty = MOTOR_DUTY_NUM_RANGE.end() - MOTOR_DUTY_NUM_RANGE.start();
-    let delta_rpm = RPM_RANGE.end() - RPM_RANGE.start();
+fn rpm_to_duty(rpm: i32) -> u16 {
+    let delta_duty = MOTOR_DUTY_NUM_MAX - MOTOR_DUTY_NUM_MIN;
+    let delta_rpm = RPM_MAX - RPM_MIN;
 
-    // (9000-1000) * -4500 / (4500--4500) + 5000 > 0
     (delta_duty * rpm / delta_rpm + MOTOR_DUTY_NUM_ZERO) as u16
 }
 
-const ZERO_RPM: f32 = 412.; // analog_unit
-const RPM_PER_ANALOG: f32 = 4500. / 410.; // RPM / analog_unit
-const GEARING: f32 = 10.6; // 10.6 (motor) : 1 (wheel)
-const WHEEL_RADIUS: f32 = 0.1; // m
-const CURRENT_RANGE: RangeInclusive<f32> = -8.0..=8.0; // A
+const ANALOG_ZERO_RPM: i32 = 412; // analog_unit
+                                  // const MAX_RPM: u16 = 4500;
+const ANALOG: i32 = 410; // half analog range
+const GEARING_10: i32 = 106; // 10.6 (motor) : 1 (wheel)
+                             // const WHEEL_RADIUS: f32 = 0.1; // m
+                             // const CURRENT_RANGE: RangeInclusive<f32> = -8.0..=8.0; // A
 
 /// Computes the wheel RPM from the analog reading.
-fn analog_to_rpm(analog: f32) -> f32 {
-    RPM_PER_ANALOG * (analog - ZERO_RPM) / GEARING
+fn analog_to_rpm(analog: i32) -> i32 {
+    //     (Fxp::from_num(MAX_RPM * (analog - ANALOG_ZERO_RPM))
+    //         / Fxp::from_num(GEARING)
+    //         / Fxp::from_num(ANALOG))
+    //     .to_num::<f32>()
+    RPM_MAX / SCALE * (analog - ANALOG_ZERO_RPM) / (ANALOG * GEARING_10 / 10)
 }
 
 fn execute(
@@ -104,7 +122,7 @@ fn execute(
     motor_rl: &mut impl SetDutyCycle,
     motor_rr: &mut impl SetDutyCycle,
 ) -> Result<(), XmaxxInfo> {
-    if !(STEERING_RANGE.contains(&command.steering))
+    if !(STEERING_ANGLE_RANGE.contains(&command.steering))
         || !(RPM_RANGE.contains(&command.fl_whl_rpm))
         || !(RPM_RANGE.contains(&command.fr_whl_rpm))
         || !(RPM_RANGE.contains(&command.rl_whl_rpm))
@@ -142,17 +160,8 @@ fn main() -> ! {
 
     // communication setup
     let mut serial = arduino_hal::default_serial!(dp, pins, 57600);
-    let mut read_buf = ReadBuf::<128>::new();
-    let mut write_buf = [0u8; 192];
-
-    // TODO remove
-//     let mut command = Command::default();
-//     let dummy_sensors = XmaxxEvent::Sensors(Sensors {
-//         fl_whl_rpm: 0.0,
-//         fr_whl_rpm: 1.0,
-//         rl_whl_rpm: 2.0,
-//         rr_whl_rpm: 3.0,
-//     });
+    let mut read_buf = ReadBuf::<READ_BUF_SIZE>::new();
+    let mut write_buf = [0u8; WRITE_BUF_SIZE];
 
     // steering setup
     let mut timer1 = Timer1Pwm::new(dp.TC1, Prescaler::Prescale64);
@@ -210,10 +219,10 @@ fn main() -> ! {
         };
 
         // write Sensors to serial
-        let fl_whl_rpm = analog_to_rpm(speed_fl.analog_read(&mut adc) as f32);
-        let fr_whl_rpm = analog_to_rpm(speed_fr.analog_read(&mut adc) as f32);
-        let rl_whl_rpm = analog_to_rpm(speed_rl.analog_read(&mut adc) as f32);
-        let rr_whl_rpm = analog_to_rpm(speed_rr.analog_read(&mut adc) as f32);
+        let fl_whl_rpm = analog_to_rpm(speed_fl.analog_read(&mut adc).into());
+        let fr_whl_rpm = analog_to_rpm(speed_fr.analog_read(&mut adc).into());
+        let rl_whl_rpm = analog_to_rpm(speed_rl.analog_read(&mut adc).into());
+        let rr_whl_rpm = analog_to_rpm(speed_rr.analog_read(&mut adc).into());
         let sensors = Sensors {
             fl_whl_rpm,
             fr_whl_rpm,
@@ -222,5 +231,8 @@ fn main() -> ! {
         };
         write_event(&XmaxxEvent::Sensors(sensors), &mut write_buf, &mut serial)
             .expect("should work because valid message and big enough buffer");
+
+        arduino_hal::delay_ms(10); // delay required, otherwise send to firmware times out
+                                   // my guess is that it is caused by low baudrate
     }
 }
