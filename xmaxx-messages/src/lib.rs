@@ -14,13 +14,13 @@ pub enum XmaxxEvent {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Sensors {
     /// Front left wheel RPM.
-    pub fl_whl_rpm: f32,
+    pub fl_whl_rpm: i32,
     /// Front right wheel RPM.
-    pub fr_whl_rpm: f32,
+    pub fr_whl_rpm: i32,
     /// Rear left wheel RPM.
-    pub rl_whl_rpm: f32,
+    pub rl_whl_rpm: i32,
     /// Rear right wheel RPM.
-    pub rr_whl_rpm: f32,
+    pub rr_whl_rpm: i32,
 }
 
 /// Possible errors in the firmware.
@@ -38,15 +38,15 @@ pub enum XmaxxInfo {
 #[derive(Serialize, Deserialize, Default, Debug)]
 pub struct Command {
     /// Angle of the steering (90 deg -> straight).
-    pub steering: i16,
+    pub steering: i32,
     /// Front left wheel RPM.
-    pub fl_whl_rpm: i16,
+    pub fl_whl_rpm: i32,
     /// Front right wheel RPM.
-    pub fr_whl_rpm: i16,
+    pub fr_whl_rpm: i32,
     /// Rear left wheel RPM.
-    pub rl_whl_rpm: i16,
+    pub rl_whl_rpm: i32,
     /// Rear right wheel RPM.
-    pub rr_whl_rpm: i16,
+    pub rr_whl_rpm: i32,
 }
 
 /// Serializes the message.

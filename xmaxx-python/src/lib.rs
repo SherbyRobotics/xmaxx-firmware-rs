@@ -13,22 +13,22 @@ use xmaxx_messages::*;
 /// A command to be sent to the firmware.
 #[pyclass(name = "Command")]
 struct PyCommand {
-    steering: f32,
-    fl_whl_rpm: f32,
-    fr_whl_rpm: f32,
-    rl_whl_rpm: f32,
-    rr_whl_rpm: f32,
+    steering: i32,
+    fl_whl_rpm: i32,
+    fr_whl_rpm: i32,
+    rl_whl_rpm: i32,
+    rr_whl_rpm: i32,
 }
 
 #[pymethods]
 impl PyCommand {
     #[new]
     fn new(
-        steering: f32,
-        fl_whl_rpm: f32,
-        fr_whl_rpm: f32,
-        rl_whl_rpm: f32,
-        rr_whl_rpm: f32,
+        steering: i32,
+    fl_whl_rpm: i32,
+    fr_whl_rpm: i32,
+    rl_whl_rpm: i32,
+    rr_whl_rpm: i32,
     ) -> Self {
         Self {
             steering,
@@ -62,7 +62,7 @@ impl Into<Command> for &PyCommand {
 /// Wrapper type around [`XmaxxEvent`].
 ///
 /// It is not a Python object but it converts to two: [`PySensors`] and
-/// [`PyXmaxxInfo`]. A Python function returning this types can be be annotated
+/// [`PyXmaxxInfo`]. A Python function returning this types can be annotated
 /// with `Union[Sensors, XmaxxInfo]`.
 enum PyXmaxxEvent {
     Sensors(PySensors),
@@ -83,16 +83,16 @@ impl IntoPy<PyObject> for PyXmaxxEvent {
 struct PySensors {
     /// Front left wheel RPM.
     #[pyo3(get)]
-    fl_whl_rpm: f32,
+    fl_whl_rpm: i32,
     /// Front right wheel RPM.
     #[pyo3(get)]
-    fr_whl_rpm: f32,
+    fr_whl_rpm: i32,
     /// Rear left wheel RPM.
     #[pyo3(get)]
-    rl_whl_rpm: f32,
+    rl_whl_rpm: i32,
     /// Rear right wheel RPM.
     #[pyo3(get)]
-    rr_whl_rpm: f32,
+    rr_whl_rpm: i32,
 }
 
 #[pymethods]
