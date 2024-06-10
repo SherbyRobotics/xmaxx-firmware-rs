@@ -30,7 +30,7 @@ static MILLIS_COUNTER: avr_device::interrupt::Mutex<Cell<u32>> =
 /// Before the first call to millis, insert:
 /// millis_init(dp.TC0);
 /// unsafe { avr_device::interrupt::enable() };
-pub fn millis_init(tc0: arduino_hal::pac::TC0) {
+pub fn init_millis(tc0: arduino_hal::pac::TC0) {
     // Configure the timer for the above interval (in CTC mode)
     // and enable its interrupt.
     tc0.tccr0a.write(|w| w.wgm0().ctc());

@@ -12,10 +12,8 @@ use xmaxx_messages::*;
 
 mod utils;
 use utils::readbuf::ReadBuf;
-use utils::time::{millis, millis_init};
-
-const READ_BUF_SIZE: usize =
-    core::mem::size_of::<Command>() + core::mem::size_of::<Command>() / 8 + 1;
+use utils::time::{millis, init_millis};
+use utils::debug::*;
 
 /// Read a command from serial.
 ///
@@ -32,8 +30,11 @@ fn read_command<const N: usize>(
 
         if byte == 0 {
             // TODO reset buffer on deserialization error or will fail forever after
-            let command: Command = deserialize(read_buf.as_mut_slice())
-                .or_else(|_| Err(XmaxxInfo::DeserializationError))?;
+            let command: Command = deserialize(read_buf.as_mut_slice()).or_else(|_| {
+                read_buf.reset();
+                Err(XmaxxInfo::DeserializationError)
+            })?;
+
             read_buf.reset();
             return Ok(Some(command));
         }
@@ -41,9 +42,6 @@ fn read_command<const N: usize>(
 
     Ok(None)
 }
-
-const WRITE_BUF_SIZE: usize =
-    core::mem::size_of::<XmaxxEvent>() + core::mem::size_of::<XmaxxEvent>() + 1;
 
 /// Write an event to serial.
 fn write_event(
@@ -155,13 +153,19 @@ fn main() -> ! {
     let dp = arduino_hal::Peripherals::take().unwrap();
     let pins = arduino_hal::pins!(dp);
 
-    millis_init(dp.TC0);
+    let tx1 = pins.d18.into_output();
+    let rx1 = pins.d19.into_floating_input();
+    let debug = arduino_hal::usart::Usart::new(dp.USART1, rx1, tx1, 57600.into());
+    init_debug(debug);
+
+    init_millis(dp.TC0);
+
     unsafe { avr_device::interrupt::enable() };
 
     // communication setup
     let mut serial = arduino_hal::default_serial!(dp, pins, 57600);
-    let mut read_buf = ReadBuf::<READ_BUF_SIZE>::new();
-    let mut write_buf = [0u8; WRITE_BUF_SIZE];
+    let mut read_buf = ReadBuf::<{ Command::MAX_SERIAL_SIZE }>::new();
+    let mut write_buf = [0u8; XmaxxEvent::MAX_SERIAL_SIZE];
 
     // steering setup
     let mut timer1 = Timer1Pwm::new(dp.TC1, Prescaler::Prescale64);
@@ -212,7 +216,12 @@ fn main() -> ! {
                 }
             }
             // there was no command
-            Ok(None) => (),
+            Ok(None) => write_event(
+                &XmaxxEvent::Info(XmaxxInfo::NoCommandReceived),
+                &mut write_buf,
+                &mut serial,
+            )
+            .expect("should work because valid message and big enough buffer"),
             // could not read a command
             Err(info) => write_event(&XmaxxEvent::Info(info), &mut write_buf, &mut serial)
                 .expect("should work because valid message and big enough buffer"),
@@ -232,7 +241,9 @@ fn main() -> ! {
         write_event(&XmaxxEvent::Sensors(sensors), &mut write_buf, &mut serial)
             .expect("should work because valid message and big enough buffer");
 
-        arduino_hal::delay_ms(10); // delay required, otherwise send to firmware times out
+        arduino_hal::delay_ms(50); // delay required, otherwise send to firmware times out
                                    // my guess is that it is caused by low baudrate
+
+        debug!("Hello");
     }
 }
