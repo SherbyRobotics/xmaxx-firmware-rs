@@ -130,7 +130,11 @@ enum PyXmaxxInfo {
     /// The firmware panicked and must must reseted.
     FirmwarePanic,
     /// The command sent was invalid.
-    InvalidCommand
+    InvalidCommand,
+    /// A command was received.
+    CommandReceived,
+    /// No command was received.
+    NoCommandReceived,
 }
 
 impl From<XmaxxInfo> for PyXmaxxInfo {
@@ -142,6 +146,8 @@ impl From<XmaxxInfo> for PyXmaxxInfo {
             XmaxxInfo::ReadTimeout => Self::ReadTimeout,
             XmaxxInfo::FirmwarePanic => Self::FirmwarePanic,
             XmaxxInfo::InvalidCommand => Self::InvalidCommand,
+            XmaxxInfo::CommandReceived => Self::CommandReceived,
+            XmaxxInfo::NoCommandReceived => Self::NoCommandReceived,
         }
     }
 }
@@ -181,15 +187,20 @@ impl PyXmaxxFirmware {
     ///
     /// Raises an exception if the socket was closed or if an error occurs
     /// during the write operation.
+    ///
+    /// BUG After a while without sending, operation times out systematically
+    /// until a new firmware instantiated. Also, no command deserializes properly.
     fn send(&mut self, command: &PyCommand) -> PyResult<()> {
         if let Some(port) = &mut self.port {
-            let mut buf = [0u8; 128]; // this buffer could be smaller I think
+            let mut buf = [0u8; Command::MAX_SERIAL_SIZE]; // this buffer could be smaller I think
             let msg = serialize::<Command>(&command.into(), &mut buf)
                 .expect("serializing should just work");
 
             for i in 0..msg.len() {
                 port.write(&msg[i..=i])?;
             }
+
+            port.flush()?;
 
             Ok(())
         } else {

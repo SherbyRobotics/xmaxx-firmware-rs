@@ -10,6 +10,10 @@ pub enum XmaxxEvent {
     Info(XmaxxInfo),
 }
 
+impl XmaxxEvent {
+    pub const MAX_SERIAL_SIZE: usize = core::mem::size_of::<XmaxxEvent>() + core::mem::size_of::<XmaxxEvent>() / 8 + 1;
+}
+
 /// Sensor readings.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Sensors {
@@ -23,7 +27,7 @@ pub struct Sensors {
     pub rr_whl_rpm: i32,
 }
 
-/// Possible errors in the firmware.
+/// Information about what it happening in the firmware.
 #[derive(Serialize, Deserialize, Debug)]
 pub enum XmaxxInfo {
     SerializationError,
@@ -32,6 +36,8 @@ pub enum XmaxxInfo {
     ReadTimeout,
     FirmwarePanic,
     InvalidCommand,
+    CommandReceived,
+    NoCommandReceived,
 }
 
 /// Command sent to the firmware.
@@ -47,6 +53,11 @@ pub struct Command {
     pub rl_whl_rpm: i32,
     /// Rear right wheel RPM.
     pub rr_whl_rpm: i32,
+}
+
+impl Command {
+    pub const MAX_SERIAL_SIZE: usize = core::mem::size_of::<Command>() + core::mem::size_of::<Command>() / 8 + 1;
+
 }
 
 /// Serializes the message.
