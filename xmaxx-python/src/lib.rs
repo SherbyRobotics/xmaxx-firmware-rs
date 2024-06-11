@@ -1,5 +1,6 @@
 #![doc = include_str!("../README.md")]
 
+use std::thread;
 use std::time::Duration;
 
 use pyo3::exceptions::PyException;
@@ -25,10 +26,10 @@ impl PyCommand {
     #[new]
     fn new(
         steering: i32,
-    fl_whl_rpm: i32,
-    fr_whl_rpm: i32,
-    rl_whl_rpm: i32,
-    rr_whl_rpm: i32,
+        fl_whl_rpm: i32,
+        fr_whl_rpm: i32,
+        rl_whl_rpm: i32,
+        rr_whl_rpm: i32,
     ) -> Self {
         Self {
             steering,
@@ -153,14 +154,18 @@ impl From<XmaxxInfo> for PyXmaxxInfo {
 }
 
 /// A socket to communicate with the Xmaxx firmware.
+///
+/// **Note:** if there are problems with deserialization in the firmware,
+/// it might be because the computer is sending the next bytes too soon.
+/// Try increasing the send delay.
 #[pyclass(name = "XmaxxFirmware")]
 struct PyXmaxxFirmware {
     port: Option<Box<dyn SerialPort>>,
+    send_delay: Duration,
 }
 
 #[pymethods]
 impl PyXmaxxFirmware {
-
     /// Instantiates a connection to the firmware.
     ///
     /// port: str
@@ -169,15 +174,20 @@ impl PyXmaxxFirmware {
     ///     the baudrate of the communication
     /// timeout: int = 500
     ///     the timeout on io operations (ms)
+    /// send_delay: int = 3
+    ///     the delay between each byte sent (ms)
     #[new]
-    #[pyo3(signature = (port, baudrate=57600, timeout=500))]
-    fn new(port: &str, baudrate: u32, timeout: u64) -> PyResult<Self> {
+    #[pyo3(signature = (port, baudrate=57600, timeout=500, send_delay=3))]
+    fn new(port: &str, baudrate: u32, timeout: u64, send_delay: u64) -> PyResult<Self> {
         match serialport::new(port, baudrate).open() {
             Ok(mut port) => {
                 // must set timeout otherwise it is 0 and every operation hits it
                 port.set_timeout(Duration::from_millis(timeout))
                     .expect("setting timeout should just work?");
-                Ok(Self { port: Some(port) })
+                Ok(Self {
+                    port: Some(port),
+                    send_delay: Duration::from_millis(send_delay),
+                })
             }
             Err(err) => Err(PyException::new_err(err.description)),
         }
@@ -185,19 +195,23 @@ impl PyXmaxxFirmware {
 
     /// Sends a command to the firmware.
     ///
-    /// Raises an exception if the socket was closed or if an error occurs
+    /// This function sleeps `send_delay` for each byte sent. Treat like a
+    /// blocking function.
+    ///
+    /// Raises an exception if the socket was closed or if an io error occurs
     /// during the write operation.
     ///
     /// BUG After a while without sending, operation times out systematically
-    /// until a new firmware instantiated. Also, no command deserializes properly.
+    /// until a new firmware instantiated.
     fn send(&mut self, command: &PyCommand) -> PyResult<()> {
         if let Some(port) = &mut self.port {
-            let mut buf = [0u8; Command::MAX_SERIAL_SIZE]; // this buffer could be smaller I think
+            let mut buf = [0u8; Command::MAX_SERIAL_SIZE];
             let msg = serialize::<Command>(&command.into(), &mut buf)
                 .expect("serializing should just work");
 
             for i in 0..msg.len() {
-                port.write(&msg[i..=i])?;
+                thread::sleep(self.send_delay);
+                port.write(&msg[i..i + 1])?;
             }
 
             port.flush()?;

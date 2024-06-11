@@ -1,7 +1,7 @@
 use core::cell::RefCell;
 
-pub(crate) type DebugConsole = arduino_hal::hal::usart::Usart1<arduino_hal::DefaultClock>;
-pub(crate) static DEBUG: avr_device::interrupt::Mutex<RefCell<Option<DebugConsole>>> =
+pub type DebugConsole = arduino_hal::hal::usart::Usart1<arduino_hal::DefaultClock>;
+pub static DEBUG: avr_device::interrupt::Mutex<RefCell<Option<DebugConsole>>> =
     avr_device::interrupt::Mutex::new(RefCell::new(None));
 
 #[macro_export]
@@ -30,7 +30,7 @@ macro_rules! debug {
     };
 }
 
-pub(crate) fn init_debug(debug: DebugConsole) {
+pub fn init_debug(debug: DebugConsole) {
     avr_device::interrupt::free(|cs| {
         *DEBUG.borrow(cs).borrow_mut() = Some(debug);
     })

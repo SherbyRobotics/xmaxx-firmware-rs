@@ -11,25 +11,29 @@ use embedded_hal_v0::serial::{Read, Write};
 use xmaxx_messages::*;
 
 mod utils;
-use utils::readbuf::ReadBuf;
-use utils::time::{millis, init_millis};
 use utils::debug::*;
+use utils::readbuf::ReadBuf;
+use utils::time::{init_millis, millis};
 
 /// Read a command from serial.
 ///
-/// **Note:** for this function to work, the sending end must send each byte individually.
+/// **Note:** for this function to work properly, each byte must be sent slowly
+/// enough for the microcontroller to read them on time.
+///
 fn read_command<const N: usize>(
     read_buf: &mut ReadBuf<{ N }>,
     serial: &mut impl Read<u8>,
 ) -> Result<Option<Command>, XmaxxInfo> {
     while let Ok(byte) = serial.read() {
+        // reset on overflow or it will always fail
         read_buf.push(byte).or_else(|_| {
             read_buf.reset();
             Err(XmaxxInfo::ReadBufferOverflow)
         })?;
 
-        if byte == 0 {
-            // TODO reset buffer on deserialization error or will fail forever after
+        // null char is the separator in cobs encoding
+        if byte == '\0' as u8 {
+            // reset buffer on deserialization error or will fail forever after
             let command: Command = deserialize(read_buf.as_mut_slice()).or_else(|_| {
                 read_buf.reset();
                 Err(XmaxxInfo::DeserializationError)
@@ -62,7 +66,6 @@ const DUTY_CYCLE_DENOM: u16 = 1000;
 const STEERING_DUTY_MIN: i32 = 510; // 130 / 255 * 1000
 const STEERING_DUTY_ZERO: i32 = 745; // 190 / 255 * 1000
 const STEERING_DUTY_MAX: i32 = 980; // 250 / 255 * 1000
-                                    //const STEERING_DUTY_RANGE: RangeInclusive<i32> = STEERING_DUTY_MIN..=STEERING_DUTY_MAX;
 const STEERING_ANGLE_MIN: i32 = 35 * SCALE; // SCALE-deg
 const STEERING_ANGLE_MAX: i32 = 135 * SCALE; // SCALE-deg
 const STEERING_ANGLE_RANGE: RangeInclusive<i32> = STEERING_ANGLE_MIN..=STEERING_ANGLE_MAX; // SCALE-deg
@@ -81,7 +84,6 @@ fn angle_to_duty(angle: i32) -> u16 {
 const MOTOR_DUTY_NUM_MIN: i32 = 100;
 const MOTOR_DUTY_NUM_ZERO: i32 = 500;
 const MOTOR_DUTY_NUM_MAX: i32 = 900;
-//const MOTOR_DUTY_NUM_RANGE: RangeInclusive<i32> = MOTOR_DUTY_NUM_MIN..=MOTOR_DUTY_NUM_MAX; // 0.1..=0.9
 const RPM_MIN: i32 = -4500 * SCALE; // SCALE-RPM
 const RPM_MAX: i32 = 4500 * SCALE; // SCALE-RPM
 const RPM_RANGE: RangeInclusive<i32> = RPM_MIN..=RPM_MAX; // SCALE-RPM
@@ -172,7 +174,7 @@ fn main() -> ! {
     let mut steering = pins.d12.into_output().into_pwm(&mut timer1);
     steering.enable(); // really important
 
-    // motors setup TODO uncomment
+    // motors setup
     let mut enable_front = pins.d8.into_output();
     let mut enable_rear = pins.d11.into_output();
     enable_front.set_high();
@@ -240,10 +242,5 @@ fn main() -> ! {
         };
         write_event(&XmaxxEvent::Sensors(sensors), &mut write_buf, &mut serial)
             .expect("should work because valid message and big enough buffer");
-
-        arduino_hal::delay_ms(50); // delay required, otherwise send to firmware times out
-                                   // my guess is that it is caused by low baudrate
-
-        debug!("Hello");
     }
 }
