@@ -11,7 +11,8 @@ pub enum Info {
 }
 
 impl Info {
-    pub const MAX_SERIAL_SIZE: usize = core::mem::size_of::<Info>() + core::mem::size_of::<Info>() + 1;
+    pub const MAX_SERIAL_SIZE: usize = ((core::mem::size_of::<Info>() * 8) / 7 + 1) // postcard encoding max len
+    + ((core::mem::size_of::<Info>() * 8) / 7 + 1) / 8 + 2; // cobs overhead
 }
 
 /// Sensor readings.
@@ -56,7 +57,8 @@ pub struct Command {
 }
 
 impl Command {
-    pub const MAX_SERIAL_SIZE: usize = core::mem::size_of::<Command>() + core::mem::size_of::<Command>() + 1;
+    pub const MAX_SERIAL_SIZE: usize = ((core::mem::size_of::<Info>() * 8) / 7 + 1) // postcard encoding max len
+    + ((core::mem::size_of::<Info>() * 8) / 7 + 1) / 8 + 2; // cobs overhead
 }
 
 /// Serializes the message.
