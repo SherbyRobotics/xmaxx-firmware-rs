@@ -60,21 +60,21 @@ impl Into<Command> for &PyCommand {
     }
 }
 
-/// Wrapper type around [`XmaxxEvent`].
+/// Wrapper type around [`Info`].
 ///
 /// It is not a Python object but it converts to two: [`PySensors`] and
-/// [`PyXmaxxInfo`]. A Python function returning this types can be annotated
-/// with `Union[Sensors, XmaxxInfo]`.
-enum PyXmaxxEvent {
+/// [`PyLog`]. A Python function returning this types can be annotated
+/// with `Union[Sensors, Log]`.
+enum PyInfo {
     Sensors(PySensors),
-    Info(PyXmaxxInfo),
+    Log(PyLog),
 }
 
-impl IntoPy<PyObject> for PyXmaxxEvent {
+impl IntoPy<PyObject> for PyInfo {
     fn into_py(self, py: Python) -> PyObject {
         match self {
             Self::Sensors(sensors) => sensors.into_py(py),
-            Self::Info(info) => info.into_py(py),
+            Self::Log(log) => log.into_py(py),
         }
     }
 }
@@ -118,8 +118,8 @@ impl From<Sensors> for PySensors {
 }
 
 /// Information about what is happening in the firmware.
-#[pyclass(name = "XmaxxInfo")]
-enum PyXmaxxInfo {
+#[pyclass(name = "Log")]
+enum PyLog {
     /// The firmware could not serialize a message.
     SerializationError,
     /// The firmware could not deserialize a message.
@@ -138,17 +138,17 @@ enum PyXmaxxInfo {
     NoCommandReceived,
 }
 
-impl From<XmaxxInfo> for PyXmaxxInfo {
-    fn from(info: XmaxxInfo) -> Self {
-        match info {
-            XmaxxInfo::SerializationError => Self::SerializationError,
-            XmaxxInfo::DeserializationError => Self::DeserializationError,
-            XmaxxInfo::ReadBufferOverflow => Self::ReadBufferOverflow,
-            XmaxxInfo::ReadTimeout => Self::ReadTimeout,
-            XmaxxInfo::FirmwarePanic => Self::FirmwarePanic,
-            XmaxxInfo::InvalidCommand => Self::InvalidCommand,
-            XmaxxInfo::CommandReceived => Self::CommandReceived,
-            XmaxxInfo::NoCommandReceived => Self::NoCommandReceived,
+impl From<Log> for PyLog {
+    fn from(log: Log) -> Self {
+        match log {
+            Log::SerializationError => Self::SerializationError,
+            Log::DeserializationError => Self::DeserializationError,
+            Log::ReadBufferOverflow => Self::ReadBufferOverflow,
+            Log::ReadTimeout => Self::ReadTimeout,
+            Log::FirmwarePanic => Self::FirmwarePanic,
+            Log::InvalidCommand => Self::InvalidCommand,
+            Log::CommandReceived => Self::CommandReceived,
+            Log::NoCommandReceived => Self::NoCommandReceived,
         }
     }
 }
@@ -158,16 +158,18 @@ impl From<XmaxxInfo> for PyXmaxxInfo {
 /// **Note:** if there are problems with deserialization in the firmware,
 /// it might be because the computer is sending the next bytes too soon.
 /// Try increasing the send delay.
-#[pyclass(name = "XmaxxFirmware")]
-struct PyXmaxxFirmware {
+#[pyclass(name = "Firmware")]
+struct PyFirmware {
     port: Option<Box<dyn SerialPort>>,
     send_delay: Duration,
 }
 
 #[pymethods]
-impl PyXmaxxFirmware {
+impl PyFirmware {
     /// Instantiates a connection to the firmware.
     ///
+    /// Parameters:
+    /// -----------
     /// port: str
     ///     the path to the serial port
     /// baudrate: int = 57600
@@ -203,6 +205,12 @@ impl PyXmaxxFirmware {
     ///
     /// BUG After a while without sending, operation times out systematically
     /// until a new firmware instantiated.
+    ///
+    /// Parameters:
+    /// -----------
+    /// command: Command
+    ///     the command to send to the firmware
+    ///
     fn send(&mut self, command: &PyCommand) -> PyResult<()> {
         if let Some(port) = &mut self.port {
             let mut buf = [0u8; Command::MAX_SERIAL_SIZE];
@@ -210,8 +218,8 @@ impl PyXmaxxFirmware {
                 .expect("serializing should just work");
 
             for i in 0..msg.len() {
-                thread::sleep(self.send_delay);
                 port.write(&msg[i..i + 1])?;
+                thread::sleep(self.send_delay);
             }
 
             port.flush()?;
@@ -227,16 +235,22 @@ impl PyXmaxxFirmware {
     /// Raises errors on failed io operations and if it fails to deserialize
     /// a message.
     ///
-    /// This method returns either a `Sensors` or a `XmaxxInfo`. Therefore,
+    /// This method returns either a `Sensors` or a `Log`. Therefore,
     /// it is recommended to match its output a little like this:
     /// ```python
     /// >>> match firmware.recv():
     /// ...    case Sensors() as sensors:
     /// ...        ...
-    /// ...    case XmaxxInfo() as info:
+    /// ...    case Log() as log:
     /// ...        ...
     /// ```
-    fn recv(&mut self) -> PyResult<PyXmaxxEvent> {
+    ///
+    /// Returns:
+    /// --------
+    /// Union[Sensors, Log]
+    ///     an event in the firmware
+    ///
+    fn recv(&mut self) -> PyResult<PyInfo> {
         if let Some(port) = &mut self.port {
             let mut b = [0u8; 1];
             let mut buf = Vec::<u8>::new();
@@ -254,8 +268,8 @@ impl PyXmaxxFirmware {
                 .or_else(|_| Err(PyException::new_err("could not deserialize")))?;
 
             Ok(match info {
-                XmaxxEvent::Sensors(sensors) => PyXmaxxEvent::Sensors(sensors.into()),
-                XmaxxEvent::Info(info) => PyXmaxxEvent::Info(info.into()),
+                Info::Sensors(sensors) => PyInfo::Sensors(sensors.into()),
+                Info::Log(log) => PyInfo::Log(log.into()),
             })
         } else {
             Err(PyException::new_err("the socket was closed"))
@@ -282,7 +296,7 @@ impl PyXmaxxFirmware {
 /// ```python
 /// >>> from xmaxx_python import *
 /// >>>
-/// >>> firmware = XmaxxFirmware("/path/to/port")
+/// >>> firmware = Firmware("/path/to/port")
 /// >>>
 /// >>> command = Command(42, 37, 37, 37, 37)
 /// >>> firmware.send(command)
@@ -290,14 +304,14 @@ impl PyXmaxxFirmware {
 /// >>> match firmware.recv():
 /// ...    case Sensors() as sensors:
 /// ...        ...
-/// ...    case XmaxxInfo() as info:
+/// ...    case Log() as Log:
 /// ...        ...
 /// ```
 #[pymodule]
 fn xmaxx_python(_py: Python, m: &PyModule) -> PyResult<()> {
-    m.add_class::<PyXmaxxFirmware>()?;
+    m.add_class::<PyFirmware>()?;
     m.add_class::<PyCommand>()?;
     m.add_class::<PySensors>()?;
-    m.add_class::<PyXmaxxInfo>()?;
+    m.add_class::<PyLog>()?;
     Ok(())
 }

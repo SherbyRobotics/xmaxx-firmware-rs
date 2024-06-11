@@ -37,7 +37,7 @@ pub fn panic(info: &core::panic::PanicInfo) -> ! {
     let mut led = pins.d13.into_output();
 
     let mut write_buf = [0u8; 128];
-    let msg = serialize(&XmaxxEvent::Info(XmaxxInfo::FirmwarePanic), &mut write_buf).unwrap();
+    let msg = serialize(&Info::Log(Log::FirmwarePanic), &mut write_buf).unwrap();
 
     loop {
         // blink LED rapidly

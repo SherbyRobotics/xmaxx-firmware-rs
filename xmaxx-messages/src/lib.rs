@@ -5,13 +5,13 @@ use serde::{Deserialize, Serialize};
 
 /// Information sent by the firmware.
 #[derive(Serialize, Deserialize, Debug)]
-pub enum XmaxxEvent {
+pub enum Info {
     Sensors(Sensors),
-    Info(XmaxxInfo),
+    Log(Log),
 }
 
-impl XmaxxEvent {
-    pub const MAX_SERIAL_SIZE: usize = core::mem::size_of::<XmaxxEvent>() + core::mem::size_of::<XmaxxEvent>() / 8 + 1;
+impl Info {
+    pub const MAX_SERIAL_SIZE: usize = core::mem::size_of::<Info>() + core::mem::size_of::<Info>() + 1;
 }
 
 /// Sensor readings.
@@ -29,7 +29,7 @@ pub struct Sensors {
 
 /// Information about what it happening in the firmware.
 #[derive(Serialize, Deserialize, Debug)]
-pub enum XmaxxInfo {
+pub enum Log {
     SerializationError,
     DeserializationError,
     ReadBufferOverflow,
@@ -56,8 +56,7 @@ pub struct Command {
 }
 
 impl Command {
-    pub const MAX_SERIAL_SIZE: usize = core::mem::size_of::<Command>() + core::mem::size_of::<Command>() / 8 + 1;
-
+    pub const MAX_SERIAL_SIZE: usize = core::mem::size_of::<Command>() + core::mem::size_of::<Command>() + 1;
 }
 
 /// Serializes the message.

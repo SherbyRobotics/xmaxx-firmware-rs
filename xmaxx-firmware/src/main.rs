@@ -23,12 +23,12 @@ use utils::time::{init_millis, millis};
 fn read_command<const N: usize>(
     read_buf: &mut ReadBuf<{ N }>,
     serial: &mut impl Read<u8>,
-) -> Result<Option<Command>, XmaxxInfo> {
+) -> Result<Option<Command>, Log> {
     while let Ok(byte) = serial.read() {
         // reset on overflow or it will always fail
         read_buf.push(byte).or_else(|_| {
             read_buf.reset();
-            Err(XmaxxInfo::ReadBufferOverflow)
+            Err(Log::ReadBufferOverflow)
         })?;
 
         // null char is the separator in cobs encoding
@@ -36,7 +36,7 @@ fn read_command<const N: usize>(
             // reset buffer on deserialization error or will fail forever after
             let command: Command = deserialize(read_buf.as_mut_slice()).or_else(|_| {
                 read_buf.reset();
-                Err(XmaxxInfo::DeserializationError)
+                Err(Log::DeserializationError)
             })?;
 
             read_buf.reset();
@@ -47,13 +47,13 @@ fn read_command<const N: usize>(
     Ok(None)
 }
 
-/// Write an event to serial.
+/// Write information to serial.
 fn write_event(
-    event: &XmaxxEvent,
+    info: &Info,
     write_buf: &mut [u8],
     serial: &mut impl Write<u8>,
-) -> Result<(), XmaxxInfo> {
-    let msg = serialize(event, write_buf).or_else(|_| Err(XmaxxInfo::SerializationError))?;
+) -> Result<(), Log> {
+    let msg = serialize(info, write_buf).or_else(|_| Err(Log::SerializationError))?;
     for b in msg {
         let _ = nb::block!(serial.write(*b)); // should be infallible, cannot .expect() because some trait is not implemented
     }
@@ -121,14 +121,14 @@ fn execute(
     motor_fr: &mut impl SetDutyCycle,
     motor_rl: &mut impl SetDutyCycle,
     motor_rr: &mut impl SetDutyCycle,
-) -> Result<(), XmaxxInfo> {
+) -> Result<(), Log> {
     if !(STEERING_ANGLE_RANGE.contains(&command.steering))
         || !(RPM_RANGE.contains(&command.fl_whl_rpm))
         || !(RPM_RANGE.contains(&command.fr_whl_rpm))
         || !(RPM_RANGE.contains(&command.rl_whl_rpm))
         || !(RPM_RANGE.contains(&command.rr_whl_rpm))
     {
-        return Err(XmaxxInfo::InvalidCommand);
+        return Err(Log::InvalidCommand);
     }
 
     steering
@@ -167,7 +167,7 @@ fn main() -> ! {
     // communication setup
     let mut serial = arduino_hal::default_serial!(dp, pins, 57600);
     let mut read_buf = ReadBuf::<{ Command::MAX_SERIAL_SIZE }>::new();
-    let mut write_buf = [0u8; XmaxxEvent::MAX_SERIAL_SIZE];
+    let mut write_buf = [0u8; Info::MAX_SERIAL_SIZE];
 
     // steering setup
     let mut timer1 = Timer1Pwm::new(dp.TC1, Prescaler::Prescale64);
@@ -205,7 +205,7 @@ fn main() -> ! {
         match read_command(&mut read_buf, &mut serial) {
             Ok(Some(command)) => {
                 // execute the command
-                if let Err(info) = execute(
+                if let Err(log) = execute(
                     command,
                     &mut steering,
                     &mut motor_fl,
@@ -213,19 +213,19 @@ fn main() -> ! {
                     &mut motor_rl,
                     &mut motor_rr,
                 ) {
-                    write_event(&XmaxxEvent::Info(info), &mut write_buf, &mut serial)
+                    write_event(&Info::Log(log), &mut write_buf, &mut serial)
                         .expect("should work because valid message and big enough buffer");
                 }
             }
             // there was no command
             Ok(None) => write_event(
-                &XmaxxEvent::Info(XmaxxInfo::NoCommandReceived),
+                &Info::Log(Log::NoCommandReceived),
                 &mut write_buf,
                 &mut serial,
             )
             .expect("should work because valid message and big enough buffer"),
             // could not read a command
-            Err(info) => write_event(&XmaxxEvent::Info(info), &mut write_buf, &mut serial)
+            Err(log) => write_event(&Info::Log(log), &mut write_buf, &mut serial)
                 .expect("should work because valid message and big enough buffer"),
         };
 
@@ -240,7 +240,7 @@ fn main() -> ! {
             rl_whl_rpm,
             rr_whl_rpm,
         };
-        write_event(&XmaxxEvent::Sensors(sensors), &mut write_buf, &mut serial)
+        write_event(&Info::Sensors(sensors), &mut write_buf, &mut serial)
             .expect("should work because valid message and big enough buffer");
     }
 }
