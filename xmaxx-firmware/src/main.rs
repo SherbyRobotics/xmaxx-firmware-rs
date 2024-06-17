@@ -137,21 +137,22 @@ fn execute(
         return Err(Log::InvalidCommand);
     }
 
+    // duty cycle should not be too large for all
     steering
         .set_duty_cycle_fraction(angle_to_duty(command.steering), DUTY_CYCLE_DENOM)
-        .expect("duty cycle should not be too large");
+        .unwrap();
     motor_fl
         .set_duty_cycle_fraction(rpm_to_duty(command.fl_whl_rpm), DUTY_CYCLE_DENOM)
-        .expect("duty cycle should not be too large");
+        .unwrap();
     motor_fr
         .set_duty_cycle_fraction(rpm_to_duty(command.fr_whl_rpm), DUTY_CYCLE_DENOM)
-        .expect("duty cycle should not be too large");
+        .unwrap();
     motor_rl
         .set_duty_cycle_fraction(rpm_to_duty(command.rl_whl_rpm), DUTY_CYCLE_DENOM)
-        .expect("duty cycle should not be too large");
+        .unwrap();
     motor_rr
         .set_duty_cycle_fraction(rpm_to_duty(command.rr_whl_rpm), DUTY_CYCLE_DENOM)
-        .expect("duty cycle should not be too large");
+        .unwrap();
 
     Ok(())
 }
@@ -210,6 +211,12 @@ fn main() -> ! {
         // read from serial
         match read_command(&mut read_buf, &mut serial) {
             Ok(Some(command)) => {
+                write_event(
+                    &Info::Log(Log::CommandReceived),
+                    &mut write_buf,
+                    &mut serial,
+                )
+                .unwrap(); // should work because valid message and big enough buffer
                 // execute the command
                 if let Err(log) = execute(
                     command,
@@ -220,7 +227,7 @@ fn main() -> ! {
                     &mut motor_rr,
                 ) {
                     write_event(&Info::Log(log), &mut write_buf, &mut serial)
-                        .expect("should work because valid message and big enough buffer");
+                        .unwrap(); // should work because valid message and big enough buffer
                 }
             }
             // there was no command
@@ -229,10 +236,10 @@ fn main() -> ! {
                 &mut write_buf,
                 &mut serial,
             )
-            .expect("should work because valid message and big enough buffer"),
+            .unwrap(), // should work because valid message and big enough buffer
             // could not read a command
             Err(log) => write_event(&Info::Log(log), &mut write_buf, &mut serial)
-                .expect("should work because valid message and big enough buffer"),
+                .unwrap(), // should work because valid message and big enough buffer
         };
 
         // write Sensors to serial
@@ -247,6 +254,6 @@ fn main() -> ! {
             rr_whl_rpm,
         };
         write_event(&Info::Sensors(sensors), &mut write_buf, &mut serial)
-            .expect("should work because valid message and big enough buffer");
+            .unwrap(); // should work because valid message and big enough buffer
     }
 }
