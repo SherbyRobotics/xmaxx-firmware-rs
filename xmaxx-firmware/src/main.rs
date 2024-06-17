@@ -130,8 +130,40 @@ fn execute(
         || !(RPM_RANGE.contains(&command.rl_whl_rpm))
         || !(RPM_RANGE.contains(&command.rr_whl_rpm))
     {
+        debug!("invalid command");
         return Err(Log::InvalidCommand);
     }
+
+    debug!(
+        "steering duty {} {} {}",
+        command.steering,
+        angle_to_duty(command.steering),
+        DUTY_CYCLE_DENOM
+    );
+    debug!(
+        "fl duty {} {}",
+//        rpm_to_duty(command.fl_whl_rpm),
+        command.fl_whl_rpm,
+        DUTY_CYCLE_DENOM
+    );
+    debug!(
+        "fr duty {} {}",
+//        rpm_to_duty(command.fr_whl_rpm),
+        command.fr_whl_rpm,
+        DUTY_CYCLE_DENOM
+    );
+    debug!(
+        "rl duty {} {}",
+//        rpm_to_duty(command.rl_whl_rpm),
+        command.rl_whl_rpm,
+        DUTY_CYCLE_DENOM
+    );
+    debug!(
+        "rr duty {} {}",
+//        rpm_to_duty(command.rr_whl_rpm),
+        command.rr_whl_rpm,
+        DUTY_CYCLE_DENOM
+    );
 
     // duty cycle should not be too large for all
     steering
