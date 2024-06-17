@@ -58,6 +58,7 @@ fn write_event(info: &Info, write_buf: &mut [u8], serial: &mut impl Write<u8>) -
     for b in msg {
         let _ = nb::block!(serial.write(*b)); // should be infallible, cannot .expect() because some trait is not implemented
     }
+    serial.flush();
     Ok(())
 }
 
@@ -249,5 +250,7 @@ fn main() -> ! {
             rr_whl_rpm,
         };
         write_event(&Info::Sensors(sensors), &mut write_buf, &mut serial).unwrap(); // should work because valid message and big enough buffer
+
+        arduino_hal::delay_ms(16);
     }
 }
