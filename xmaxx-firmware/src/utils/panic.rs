@@ -15,6 +15,10 @@ pub fn panic(info: &core::panic::PanicInfo) -> ! {
     let pins = arduino_hal::pins!(dp);
     let mut serial = arduino_hal::default_serial!(dp, pins, 57600);
 
+    let tx1 = pins.d18.into_output();
+    let rx1 = pins.d19.into_floating_input();
+    let mut debug = arduino_hal::usart::Usart::new(dp.USART1, rx1, tx1, 57600.into());
+
     // disable the motors
     let mut enable_front = pins.d8.into_output();
     let mut enable_rear = pins.d11.into_output();
@@ -22,10 +26,10 @@ pub fn panic(info: &core::panic::PanicInfo) -> ! {
     enable_rear.set_low();
 
     // print out panic location
-    ufmt::uwriteln!(&mut serial, "Firmware panic!\r").unwrap_infallible();
+    ufmt::uwriteln!(&mut debug, "Firmware panic!\r").unwrap_infallible();
     if let Some(loc) = info.location() {
         ufmt::uwriteln!(
-            &mut serial,
+            &mut debug,
             "  At {}:{}:{}\r",
             loc.file(),
             loc.line(),
