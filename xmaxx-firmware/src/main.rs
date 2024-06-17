@@ -19,7 +19,6 @@ use utils::time::{init_millis, millis};
 ///
 /// **Note:** for this function to work properly, each byte must be sent slowly
 /// enough for the microcontroller to read them on time.
-///
 fn read_command<const N: usize>(
     read_buf: &mut ReadBuf<{ N }>,
     serial: &mut impl Read<u8>,
@@ -54,11 +53,7 @@ fn read_command<const N: usize>(
 }
 
 /// Write information to serial.
-fn write_event(
-    info: &Info,
-    write_buf: &mut [u8],
-    serial: &mut impl Write<u8>,
-) -> Result<(), Log> {
+fn write_event(info: &Info, write_buf: &mut [u8], serial: &mut impl Write<u8>) -> Result<(), Log> {
     let msg = serialize(info, write_buf).or_else(|_| Err(Log::SerializationError))?;
     for b in msg {
         let _ = nb::block!(serial.write(*b)); // should be infallible, cannot .expect() because some trait is not implemented
@@ -217,6 +212,7 @@ fn main() -> ! {
                     &mut serial,
                 )
                 .unwrap(); // should work because valid message and big enough buffer
+
                 // execute the command
                 if let Err(log) = execute(
                     command,
@@ -226,8 +222,8 @@ fn main() -> ! {
                     &mut motor_rl,
                     &mut motor_rr,
                 ) {
-                    write_event(&Info::Log(log), &mut write_buf, &mut serial)
-                        .unwrap(); // should work because valid message and big enough buffer
+                    write_event(&Info::Log(log), &mut write_buf, &mut serial).unwrap();
+                    // should work because valid message and big enough buffer
                 }
             }
             // there was no command
@@ -238,8 +234,7 @@ fn main() -> ! {
             )
             .unwrap(), // should work because valid message and big enough buffer
             // could not read a command
-            Err(log) => write_event(&Info::Log(log), &mut write_buf, &mut serial)
-                .unwrap(), // should work because valid message and big enough buffer
+            Err(log) => write_event(&Info::Log(log), &mut write_buf, &mut serial).unwrap(), // should work because valid message and big enough buffer
         };
 
         // write Sensors to serial
@@ -253,7 +248,6 @@ fn main() -> ! {
             rl_whl_rpm,
             rr_whl_rpm,
         };
-        write_event(&Info::Sensors(sensors), &mut write_buf, &mut serial)
-            .unwrap(); // should work because valid message and big enough buffer
+        write_event(&Info::Sensors(sensors), &mut write_buf, &mut serial).unwrap(); // should work because valid message and big enough buffer
     }
 }
