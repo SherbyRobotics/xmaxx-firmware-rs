@@ -27,18 +27,24 @@ fn read_command<const N: usize>(
     while let Ok(byte) = serial.read() {
         // reset on overflow or it will always fail
         read_buf.push(byte).or_else(|_| {
+            debug!("overflow");
             read_buf.reset();
             Err(Log::ReadBufferOverflow)
         })?;
+
+        debug!("read");
+        debug!("{:?}", read_buf.as_mut_slice());
 
         // null char is the separator in cobs encoding
         if byte == '\0' as u8 {
             // reset buffer on deserialization error or will fail forever after
             let command: Command = deserialize(read_buf.as_mut_slice()).or_else(|_| {
+                debug!("deser err");
                 read_buf.reset();
                 Err(Log::DeserializationError)
             })?;
 
+            debug!("command!");
             read_buf.reset();
             return Ok(Some(command));
         }
@@ -78,7 +84,7 @@ fn angle_to_duty(angle: i32) -> u16 {
     let delta_angle = STEERING_ANGLE_MAX - STEERING_ANGLE_MIN;
 
     // safe to cast: all positive and in range of u16
-    (delta_duty * angle / delta_angle + STEERING_DUTY_ZERO) as u16
+    (delta_duty * (angle - STEERING_ANGLE_MIN) / delta_angle + STEERING_DUTY_MIN) as u16
 }
 
 const MOTOR_DUTY_NUM_MIN: i32 = 100;
